@@ -17,6 +17,15 @@ import matplotlib
 from matplotlib import pyplot as plt
 from matplotlib.animation import FuncAnimation
 # from GTac_Hand import gtac_hand
+# -----------------------------------------------------------------------------
+# ros configuration
+import rospy
+from std_msgs.msg import Float32
+rospy.init_node('topic_publisher_GTac_nus', anonymous=True)
+rospublish = rospy.Publisher('topic_publisher_GTac_NUS', Float32, queue_size=10)
+# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+
 
 window_length = 200
 x = np.linspace(0, 199, 200)
@@ -45,7 +54,7 @@ mat_loc_index = 0.001
 
 
 
-def update_vals(data_frame_array, finger=1, sec=2, window_len=200):
+def update_vals(data_frame_array, finger=2, sec=2, window_len=200):
     tri_index = finger * 9 + (2 - sec) * 3
     sum_r = 0
     sum_c = 0
@@ -67,22 +76,22 @@ def update_vals(data_frame_array, finger=1, sec=2, window_len=200):
             mat_sz[i] = 0
         mat_x[i] = c + 1 + data_frame_array[tri_index] * mat_loc_index
         mat_y[i] = r + 1 + data_frame_array[tri_index + 1] * mat_loc_index
-
-        print('value: ',value)
-        print("mat_x: ", mat_x[i])
-
-    
     # update pressing locations
     if sum_value != 0:
         press_location_r = round(sum_r / sum_value, 1)
         press_location_c = round(sum_c / sum_value, 1)
+        
     # update magnetic signals
-    
     mag_x.append(data_frame_array[tri_index])
     mag_y.append(data_frame_array[tri_index + 1])
     mag_z.append(abs(data_frame_array[tri_index + 2]))
     sum_value_list.append(sum_value)
+    print('L:{:0.2f}, X:{:0.2f},Y: {:0.2f}'.format(sum_value_list[-1], mag_x[-1], mag_y[-1]))
     # ---------------------------------------------------------------------------
+    # publish force data:
+    rospublish.publish(sum_value_list[-1])
+    # ---------------------------------------------------------------------------
+    
     press_location_r_list.append(press_location_r - 1)
     press_location_c_list.append(press_location_c - 1)
     if len(mag_x) > window_len:
@@ -92,7 +101,6 @@ def update_vals(data_frame_array, finger=1, sec=2, window_len=200):
         sum_value_list = sum_value_list[-window_len:]
         press_location_r_list = press_location_r_list[-window_len:]
         press_location_c_list = press_location_c_list[-window_len:]
-    # ---------------------------------------------------------------------------
     print('r:{};c:{}'.format(press_location_r, press_location_c))
     # update vals for plot gaussian
     # zarray = gaus2d(x=x_mesh, y=y_mesh,
@@ -168,8 +176,6 @@ def setup_figures():
     f4_ax3_mat_sum = f4_ax3.plot(np.zeros(window_length),label='FA-I Sum')[0]
     
     f4_ax3_magz = f4_ax3.plot(np.zeros(window_length), label='SA-II z')[0]
-    # f4_ax3_mag_z = f4_ax3.plot(np.zeros(window_length),
-    #                              label='mag-z')[0]
     f4_ax3.legend(loc=0)
 
     f4_ax4 = fig4.add_subplot(gs[2, -2:])
@@ -178,35 +184,25 @@ def setup_figures():
     f4_ax4_center_x = f4_ax4.plot(np.zeros(window_length), label='x')[0]
     f4_ax4_center_y = f4_ax4.plot(np.zeros(window_length), label='y')[0]
     f4_ax4.legend()
-
-    # fig1 = plt.figure()
-    # f1_ax1_gaussian = fig1.add_subplot(111, projection='3d')
-    # f1_ax1_gaussian.set_title('GTac Super-Resotion')
-    # f1_ax1_gaussian_plot = [f1_ax1_gaussian.plot_surface(x_mesh, y_mesh, zarray[:, :], color='0.75', rstride=1, cstride=1)]
-
     return fig4, f4_ax1_scat_tri_mat, f4_ax1_scat_pre_loc, \
            f4_ax2_magx, f4_ax2_magy, f4_ax3_magz, \
            f4_ax3_mat_sum, f4_ax4_center_x, f4_ax4_center_y
 
 
 def animate2(i):
-    print(i)
     global TO_MOVE, TO_RELEASE, pinch, time_thumb_fle, last_time_12, last_time_12_inv
     start_in = time.time()
     
     # -----------------------------------------------------------------------------------------------------------------
     # read data from the sensor
-    data = raw_data_byts_checkout_2(ser, verbose=False) 
-    # print('data: ',data)
-    # -----------------------------------------------------------------------------------------------------------------
-    if len(sum_value_list) > 0:
-        print('Normal Force: ',sum_value_list[-1])
+    data = raw_data_byts_checkout_2(ser, verbose=False)
     # -----------------------------------------------------------------------------------------------------------------
     ms = int(round((time.time() - start) * 1000))
     # data.append(ms)
     data = np.append(data, ms)
     # data = gtac_data.preprocess_(data)
     # dt_list.append(data)
+    # print("data----: ", len(data)) # length: 293
     data_frame_array = data - avg  # average by the initial data
     to_return = []
     for f_ind, f in enumerate(finger_to_plot):
@@ -230,50 +226,7 @@ def animate2(i):
             to_return.append(ax3_mat_sum_list[ind])
             to_return.append(ax4_center_x_list[ind])
             to_return.append(ax4_center_y_list[ind])
-    # print('data: ', to_return)
-
-    # control the fingers to grasp
-    # pinch,time_thumb_fle,last_time_12,last_time_12_inv = reactive_pinch(data_frame_array,ser,
-    #                pinch,time_thumb_fle,last_time_12,last_time_12_inv)
-    # mat_sum_sec = find_mat_sum_sec(data_frame_array,
-    #                                mat_th=50,
-    #                                verbose=False)
-    # if mat_sum_sec[2, 0] > 50 and not pinch:
-    #     pinch = True
-    # # creat current time stamp
-    # time_ctrl = time.time()
-    # if pinch and mat_sum_sec[0, 2] < 300 and time_ctrl - time_thumb_fle > 0.05:
-    #     ser.write(b'<21>')
-    #     time_thumb_fle = time_ctrl
-    #
-    # if pinch and mat_sum_sec[1, 0] < 600 and time_ctrl - last_time_12 > 0.1:
-    #     ser.write(b'<41>')
-    #     ser.write(b'<1-1>')
-    #     # ser.write(b'<31>')
-    #     # ser.write(b'<51>')
-    #     # ser.write(b'<61>')
-    #     last_time_12 = time_ctrl
-    #
-    # if pinch and mat_sum_sec[1, 0] > 800 and time_ctrl - last_time_12_inv > 0.1:
-    #     ser.write(b'<4-1>')
-    #     ser.write(b'<2-1>')
-    #     ser.write(b'<11>')
-    #     # ser.write(b'<3-1>')
-    #     # ser.write(b'<5-1>')
-    #     # ser.write(b'<6-1>')
-    #     last_time_12_inv = time_ctrl
-    # if time.time() - start > 5 and TO_MOVE:
-    #     ser.write(b'<220>')
-    #     ser.write(b'<450>')
-    #     TO_MOVE = False
-    #     TO_RELEASE = True
-    # if time.time() - start > 15 and TO_RELEASE:
-    #     ser.write(b'<>')
-    #     TO_RELEASE = False
-    print('frames {}, time {}ms'.format(i, round((time.time() - start_in) * 1000)))
     return to_return
-
-
 
 if __name__ == '__main__':
     # current time
@@ -332,12 +285,7 @@ if __name__ == '__main__':
             ax3_mat_sum_list[ind] = f4_ax3_mat_sum
             ax4_center_x_list[ind] = f4_ax4_center_x
             ax4_center_y_list[ind] = f4_ax4_center_y
-    # styles = ['r-', 'g-', 'y-', 'm-', 'k-', 'c-']
-    # styles = ['r-', 'g-']
-    # lines = [plot(ax, style) for ax, style in zip(axes, styles)]
-    # line = axes[0].plot(mag_x, mag_y,animated=True)
-    # fig = plt.figure()
-    # line = plt.plot(mag_x,mag_y)
+            
     start = time.time()
     TO_MOVE = True
     TO_RELEASE = True
@@ -349,16 +297,12 @@ if __name__ == '__main__':
     init_values = collect_DataPoints(ser, DataPoints=300, starttime=start)
     avg = np.array(init_values).mean(axis=0, dtype=int)
 
-    # print('{}/{}'.format(n, DataPoints))
-    # collect init values for average
-
-    # collect init values for average
-
     ani = FuncAnimation(fig_list[0], animate2,
                         frames=DataPoints,
                         interval=1, blit=True)
     # init position
     # ser.write(b'<>')
     # plt.tight_layout()
+    print('********************')
     plt.show()
     ser.close()
